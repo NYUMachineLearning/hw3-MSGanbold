@@ -1,0 +1,1143 @@
+---
+title: "ML hw3"
+author: "Ganbold,MungunSarnai"
+date: "9/27/2019"
+output: html_document
+---
+
+# Lab Section
+
+In this lab, we will go over regularization, classification and performance metrics. We will be using the caret package in R. https://topepo.github.io/caret/train-models-by-tag.html
+
+# Perfomance Metrics 
+
+## K- fold cross validatation - Resampling method
+
+Randomly split the training data into k folds. If you specify 10 folds, then you split the data into 10 partitions. Train the model on 9 of those partitions, and test your model on the 10th partition. Iterate through until every partition has been held out. 
+
+A smaller k is more biased, but a larger k can be very variable. 
+
+## Bootstrapping - Resampling method
+
+Sample with replacement. Some samples may be represented several times within the boostrap sample, while others may not be represented at all. The samples that are not selected are called out of bag samples. 
+
+Boostrap error rates usually have less uncertainty than k-fold cross validation, but higher bias. 
+
+## Error
+
+Deviation of the observed value to the true value (population mean)
+
+## Residual 
+
+Deviation of the observed value to the estimated value (sample mean)
+$$residual=y_i - \hat{y_i}$$
+where $\hat{y_i}$ is the estimated value
+
+## Mean Squared Error (MSE)
+
+$$MSE=\frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{y_i})^2$$
+
+## Root Mean Squared Error (RMSE)
+Same units as original data.
+
+$$RMSE=\sqrt{MSE}$$
+
+## R^2
+Proportion of information explained by the model. It is a measure of correlation, not accuracy. 
+$$1-RSS/TSS$$ 
+
+## L2 regularization : Ridge regression. Regularize by adding the sum of the coefficients, squared, to the function. 
+
+$$Ridge Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p(w_j)^2$$
+
+## L1 regularization : Lasso Regression. Regularize by adding the sum of the absolute value of the coefficients to the model. Coefficient estimates may be pushed to zero -- Lasso can perform variable selection
+
+$$Lasso Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p|w_j|$$
+
+## Sensitivity or True Positive Rate
+
+TP = True Positives
+TN = True Negatives
+FP = False Positives - Type I error
+FN =  False Negatives - Type II error
+N = actual negative samples
+P = actual positive samples
+
+$$TPR=TP/(TP + FN)$$
+
+## Specificity or True Negative Rate
+
+$$TNR=TN/(TN + FP)$$
+
+## Receiver Operating Characteristics (ROC)
+
+Plot of True Positive Rate (sensitivity) against False Positive Rate, or plots the True Positive Rate (sensitivity) against specificity. 
+
+Either way, a good ROC curves up through the left corner, and has a large area underneath. 
+
+## Area under ROC curve (AUC)
+
+The area underneath the ROC curve
+
+## Logistic function:
+
+$$P(X)=e^{w_0 + w_1X}/{1+e^{w_0+w_1X}}$$
+
+\newpage
+
+### The broad steps of Machine learning in R. 
+
+1. Split the data into training and test. Set test aside. 
+
+2. Fit a good model to the training data. This includes using bootstapping, cross validation etc. to resample the training data and fit a good model.
+
+3. Visualize if your model learned on the training data by looking at ROC curve and AUC.
+
+4. Test how your model performs on the test data. 
+
+### Broad steps for choosing between models according to Max Kuhn and Kjell Johnson
+
+1. Start with several models that are the least interpretable and the most flexible, like boosted trees and svms. These models are the often the most accurate.
+
+2. Investigate simpler models that are less opaque, like partial least squares, generalized additive models, or naive bayes models.
+
+3. Consider using the simplest model that reasonable approximates the performance of more complex models
+
+\newpage
+
+```{r, include=FALSE}
+library(caret)
+library(ROCR)
+library(pROC)
+library(MASS)
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(ggfortify)
+library(glmnet)
+library(tidyverse)
+library(e1071)
+library(FactoMineR)
+library(factoextra)
+
+```
+```{r}
+head(airquality)
+```
+
+Split data into training and test set
+```{r}
+train_size <- floor(0.75 * nrow(airquality))
+set.seed(543)
+train_pos <- sample(seq_len(nrow(airquality)), size = train_size)
+train_regression <- airquality[train_pos,-c(1,2)]#remove first two columns
+test_regression <- airquality[-train_pos,-c(1,2)]
+
+dim(train_regression) 
+dim(test_regression)
+```
+```{r}
+#train_regression
+dim(train_regression)
+```
+
+## Resampling in R 
+(method = boot, cv, LOOCV ...)
+
+```{r}
+?trainControl
+```
+
+## Ridge Regression
+
+$$Ridge Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p(w_j)^2$$
+2. Create and train model 
+```{r}
+ctrl =  trainControl(method = "boot", 15)
+# bootstrapped 15 repititions
+
+Ridge_regression <- train(Temp ~ Wind + Month, data = train_regression,
+                          method = 'ridge', trControl= ctrl) 
+```
+
+```{r}
+Ridge_regression 
+```
+
+Examine the residuals 
+```{r}
+ridge_test_pred <- predict(Ridge_regression, newdata = test_regression)
+
+# plot the predicted values vs the observed values
+plot_ridge_test_pred <- data.frame(Temp_test_pred = ridge_test_pred, 
+                                   Observed_Temp = test_regression$Temp)
+#dim(plot_ridge_test_pred)
+ggplot(data = plot_ridge_test_pred) +
+  geom_point(aes(x=Observed_Temp, y = Temp_test_pred)) + 
+  ggtitle("True Temp Value vs Predicted Temp Value Ridge Regression") +
+  theme_bw()
+
+# median residual value should be close to zero
+median(resid(Ridge_regression))
+```
+
+
+# Homework
+
+## Lasso
+
+$$Lasso Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p|w_j|$$
+2. Create and train model 
+```{r}
+ctrl =  trainControl(method = "boot", 9)
+# bootstrapped 15 repititions
+
+Lasso_regression <- train(Temp ~ Wind + Month, data = train_regression,
+                          method = 'lasso', trControl= ctrl)
+```
+
+```{r}
+Lasso_regression
+```
+
+Examine the residuals (on test): 
+```{r}
+lasso_test_pred <- predict(Lasso_regression, newdata = test_regression)
+
+# plot the predicted values vs the observed values
+plot_lasso_test_pred <- data.frame(Temp_test_pred_lasso = lasso_test_pred, 
+                                   Observed_Temp = test_regression$Temp)
+#dim(plot_lasso_test_pred)
+ggplot(data = plot_lasso_test_pred) +
+  geom_point(aes(x=Observed_Temp, y = Temp_test_pred_lasso)) + 
+  ggtitle("True Temp Value vs Predicted Temp Value Lasso Regression") +
+  theme_bw()
+
+# median residual value should be close to zero
+median(resid(Lasso_regression))
+
+```
+
+
+# Classification
+
+1. Split into training and test set 
+```{r}
+data(iris)
+
+#split into training and test set 
+train_size <- floor(0.75 * nrow(iris))
+set.seed(543)
+train_pos <- sample(seq_len(nrow(iris)), size = train_size)
+train_pos
+#???vector with 117 indexes of randomly sampled train set observations
+train_classifier <- iris[train_pos,]
+test_classifier <- iris[-train_pos,]
+
+dim(train_classifier) #112x5
+dim(test_classifier) #38x5
+
+```
+
+
+## Linear Discriminant analysis
+
+* Good for well separated classes, 
+* more stable with small n than logistic regression, 
+* and good for more than 2 response classes. 
+* LDA assumes a normal distribution with a class specific mean and common variance. 
+
+Let's see if our (unsplitted) data follows the assumptions of LDA. 
+```{r}
+
+slength <- ggplot(data = iris, aes(x = Sepal.Length, fill = Species)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  ggtitle("Sepal Length by iris species")+
+  theme_bw()
+slength
+
+
+swidth <- ggplot(data = iris, aes(x = Sepal.Width, fill = Species)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25) +
+  ggtitle("Sepal width by iris species")+
+  theme_bw()
+swidth
+
+
+plength <- ggplot(data = iris, aes(x = Petal.Length, fill = Species)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25) +
+  ggtitle("Petal lenth by iris species")+
+  theme_bw()
+plength
+
+
+pwidth <- ggplot(data = iris, aes(x = Petal.Width, fill = Species)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25) +
+  ggtitle("Petal width by iris species")+
+  theme_bw()
+pwidth
+
+
+grid.arrange(slength, swidth, plength, pwidth)
+
+```
+Note
+Conclusion on LDA suitability check with Xj histograms:
+*n is rather small
+*each level of response distribution is close to normal
+*more than 2 levels of response Y
+* well separated classes?..
+
+
+
+LDA analysis on train set:
+
+Note: lda(y~ x1+x2..., data, cv=T)
+
+```{r}
+LDA <- lda(Species~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, 
+           data= train_classifier, cv= T)
+LDA
+```
+Note
+Conclusion of LDA:
+* 'LDA probabilities of groups' shows ~equally represented class/response levels
+* 'Group means' ?????? Xj not really normally distributed
+* 'Proportion of trace' - percentage separation achieved by each discriminant function.Number of discriminant functions=(j-1), where j is a number levels in the response. Therefore, in LDA j>2.
+
+!LD1 function is the best to explain the data variance. Sepal.length and Sepal.width  are the two variables with positive strong relationship with this function.
+
+
+
+4. Test model on test set 
+```{r}
+#predict the species of the test data
+LDA_predict <- predict(LDA, newdata=test_classifier)
+LDA_predict
+```
+Notes 
+(https://www.displayr.com/linear-discriminant-analysis-in-r-an-introduction/):
+
+LDA OUTPUT FOR VALIDATION SET:
+
+$class - shows actual class level (in validation set)
+
+$posterior - is the regressional weight for each indexed observation in validation set. The highest score predicts the sub-class.
+
+ONE CAN COMPARE class=actual vs. posterior=predicted (in valid.set)
+
+*2 LD functions are run parallely for each n. Mean LD1 and LD2 (for each n) is calculated next and the best LD function is selected ('LD trace'. Tracing that LD one can see the features strongly correlated with it) .  
+
+3(=Yj) mean d.scores are collected for each feature (Xi). It will be a df [j:i]. The highest disc score will reveal the 'j' sub-class prediction. R^2 correlation coefficient is calculated for this prediction. All R^2 scores are collected (one for each feature, a vector with i length). The highest R^2 score identifies the discriminating attribute.
+
+Thus, LDA is not only a supervised classifing method but also a dimension reduction technique as well (for not large n sample with independent and normally distr-ed Xi and Yj>2). 
+
+
+$x
+LD1 and LD2 -linear discriminants (remember that in this case with 3 classes we have at most two linear discriminants) are combination coefficients for each of indexed observation in validation set.
+
+**** $singular values (svd) - gives the ratio of the between- and within-group standard deviations on the linear discriminant variables (LDs). {not shown in this output} 
+***** $prop -We can use the singular values to compute the amount of the between-group variance that is explained by each linear discriminant. In our example we see that the first linear discriminant explains more than {99\%} of the between-group variance in the iris dataset. {not shown in this output} 
+
+
+*Confusion Matrix*
+A confusion matrix is a technique for summarizing the performance of a classification algorithm. Classification accuracy alone can be misleading if you have an unequal number of observations in each class or if you have more than two classes in your dataset.
+
+```{r}
+#?confusionMatrix()
+```
+
+```{r}
+#install.packages("e1071")
+confusionMatrix(LDA_predict$class, reference = test_classifier$Species)
+```
+* kappa - or Cohen's coefficient is similar to correlation coefficients, it can range from −1 to +1, where 0 represents the amount of agreement that can be expected from random chance, and 1 represents perfect agreement between the raters. While kappa values below 0 are possible, Cohen notes they are unlikely in practice
+
+```{r}
+
+#Activation function maps Pred.score [-int:+int] to Probability (0 of PS mamps to 0.5 of Prob. Max of PS maps to max of Prob.=1, same for the mins.) 
+
+# LDA_predict$posterior = df[idx:PredScore for each 3Species] = df[38:3], where index is not incl in the dataframe
+
+# save the predictions in a new variable
+predictions <- as.data.frame(LDA_predict$posterior) %>% 
+  rownames_to_column("idx") # rownames (indexes of validation set) are now officialy under column name 'idx' and are included in df. The df is now one column bigger = [38:4] 
+
+test_classifier <- test_classifier %>% 
+  rownames_to_column("idx")
+#now test_classifier has officially Index as a row name.
+#df[38:5] became [38:6]
+
+predictions_actual <- full_join(predictions,test_classifier, by = "idx" ) #join and order by Index
+#predictions =df[38:4]. Idx;regression weight for 3 sub-classesY1-3
+#predictions_actual=df[38:9]. Idx,predicted RWeights for all Y1-3, actual X1-4, actual_Y class
+
+
+# choose the two classes we want to compare, setosa and versicolor
+set_vers_true_labels <- predictions_actual %>% 
+  filter(Species %in% c("setosa", "versicolor")) %>% 
+  #[24:9] filtered 24 obs where Y1 or Y2 have the discriminating PredScore (all observations with high PredSc for Y3 is not here)
+  mutate(Species = as.character(Species)) 
+  #(df[24:9]; idx, PredScore for Y1-3 (where Y3 score is never discr-ve), actual X1-4, actual_class for these 24 predictions)
+
+#make dataframe PredScores for setosa and the actual labels
+pred_label <- data.frame(prediction = set_vers_true_labels$setosa,
+                         label = set_vers_true_labels$Species)
+#df[24:2]
+
+# summary of prediction:
+ggplot(pred_label, aes(x = 1:24, y = prediction, color = label))+
+  geom_point()+
+  ggtitle("Prediction Scores calculated for Setosa in test set are mapped to\n probabilities using activating function. As a result,in test set, 14\n observations were\n predicted by LDA as setosa and 10 were predicted as versicolor.")
+
+
+pred <- prediction(set_vers_true_labels$setosa, set_vers_true_labels$Species, 
+label.ordering = c("versicolor", "setosa")) 
+#24 filtered PredScores for setosa column are presented in df.
+#Positive/high PredScores are marked as 'setosa', otherwise, obs. with negative scores labeled as 'versicolor') (Levels: versicolor < setosa)
+#Also, outputs for cutoff 'n' TP, TN, FP, FN and more.
+
+
+#ROC Curve:
+perf <- performance(pred,"tpr","fpr")
+plot(perf, main="ROC curve for LDA prediction of setosa class:\n sensitivity vs specificty", col = "red")
+
+```
+
+
+## Logistic Regression
+
+$logodds_i=B_0 + B_1X_{i1}$
+
+
+Here, the log odds represents the log odds of $Y_i$ being 0 or 1. 
+
+Where $logodds$ is the dependent variable, and $X_i$ is the independent variable. $B_{number}$ are the parameters to fit. 
+
+Logistic Regression assumes a linear relationship between the $logodds$ and $X$.
+
+To convert from logodds, a not intuitive quantity, to odds, a more intuitive quantity, we use this non-linear equation: 
+
+$odds_i=e^{logodds_{i}}$
+or 
+$odds_i=e^{B_0 + B_1X_{i1}}$
+
+Odds is defined as the probability that the event will occur divided by the probability that the event will not occur.
+
+Now we convert from odds to probability.
+
+The probability that an event will occur is the fraction of times you expect to see that event in many trials. Probabilities always range between 0 and 1.
+
+To convert from odds to a probability, divide the odds by one plus the odds. So to convert odds of 1/9 to a probability, divide 1/9 by 10/9 to obtain the probability of 0.10
+
+
+Note: 
+odds=a/b 
+probty=a/(a+b)
+
+odds <- e^(log_odds)
+
+$P=odds/(odds+1)$
+
+
+## Logistic Regression implementation 
+
+* Y=1 is the probability of the event occuring.
+* Independent variables should not be correlated.
+* Log odds and independent variables should be linearly correlated.
+
+2. Train and fit model 
+```{r}
+data(iris)
+
+#split into training and test set 
+train_size <- floor(0.75 * nrow(iris))
+set.seed(543)
+train_pos <- sample(seq_len(nrow(iris)), size = train_size)
+train_classifier <- iris[train_pos,]
+test_classifier <- iris[-train_pos,]
+
+
+dim(train_classifier) #[11:5]
+dim(test_classifier) #[38:5]
+
+#Preparing data for Logistic Regression
+#only look at two classes in each of data chunck:
+train_classifier_log <- train_classifier[c(which(train_classifier$Species == "setosa"),
+                                           which(train_classifier$Species == "versicolor")),]
+
+test_classifier_log <- test_classifier[c(which(test_classifier$Species == "setosa"), 
+                                         which(test_classifier$Species == "versicolor")),]
+
+#Stashing away Predictors for each data chunck:
+train_classifier_log$Species <- factor(train_classifier_log$Species)
+test_classifier_log$Species <- factor(test_classifier_log$Species)
+
+#Setting up control parameters for fitting Logistic Regression:
+ctrl <- trainControl(method = "repeatedcv", repeats = 15,classProbs = T,
+                     savePredictions = T)
+#summary(ctrl)
+
+#create model. logistic regression is a bionomial general linear model. 
+#predict species based on sepal length with set up control
+logistic_regression <- train(Species~ Sepal.Length, data = train_classifier_log, 
+                             method = "glm", family= "binomial", trControl = ctrl)
+```
+
+
+```{r}
+logistic_regression
+```
+kappa is a coefficient of agreement, ranges [-1;+1]. 0=random chance. is rarely negative.
+
+```{r}
+summary(logistic_regression)
+```
+
+3. Visualize ROC curve 
+```{r}
+plot(x = roc(predictor = logistic_regression$pred$setosa,
+             response = logistic_regression$pred$obs)$specificities, 
+     y = roc(predictor = logistic_regression$pred$setosa, 
+             response = logistic_regression$pred$obs)$sensitivities,
+     col= "blue", xlim = c(1, 0), type ="l", ylab = "Sensitivity",
+     xlab = "Specificity")
+legend("bottomright", legend = paste("setosa v versicolor --", 
+                                     roc(predictor = logistic_regression$pred$setosa,
+                                         response = logistic_regression$pred$obs)$auc
+, sep = ""), col = c("blue"), fill = c("blue"))
+```
+
+4. Test on an independent set
+```{r}
+#predict iris species using Sepal legth
+logistic_regression_predict_class <- predict(logistic_regression, 
+                                             newdata = test_classifier_log)
+
+#confusion matrix
+confusionMatrix(logistic_regression_predict_class, 
+                reference = test_classifier_log$Species)
+```
+
+
+! Check if log odds and independent variables are linearly correlated
+```{r}
+
+#Probability for each event for each class:
+logistic_regression_predict <- predict(logistic_regression, 
+                                       newdata = test_classifier_log, type = "prob")  #df[testset:2(Y1 and Y2)]
+
+# To convert from a probability to odds, divide the probability by one minus that probability. So if the probability is 10% or 0.10 , then the odds are 0.1/0.9 or ‘1 to 9’ 
+odds_species1 <- logistic_regression_predict[,1] / (1 - logistic_regression_predict[,1])
+log_odds_species1 <- log(odds_species1)
+
+#log_odds and indep.variable X must be linearly correlated:
+cor.test(log_odds_species1, test_classifier_log$Sepal.Length)
+plot(log_odds_species1, test_classifier_log$Sepal.Length)
+```
+
+Look deeper at the logistic regression 
+```{r}
+#Again, probability for each event for 2 classes:
+logistic_predict_prob <- predict(logistic_regression,
+                                 newdata = test_classifier_log, type="prob") #df[90:2]
+
+#prepare df to plot = predicted + actual labels:
+logistic_pred_prob_plot <- data.frame(Species_pred = logistic_predict_prob, Sepal.Length  = test_classifier_log$Sepal.Length) 
+
+#Stash away actual labels as numeric (as logical vector):
+test_classifier_log$Species <- as.numeric(test_classifier_log$Species) -1
+
+# Plotting predictions and actual observations 
+ggplot(data = test_classifier_log) +
+  geom_point(aes(x=Sepal.Length, y = Species)) + 
+  geom_line(data = logistic_pred_prob_plot, aes(x = Sepal.Length, 
+                                                y = Species_pred.setosa, col =  "setosa"))+
+  geom_line(data = logistic_pred_prob_plot, aes(x = Sepal.Length,
+                                                y = Species_pred.versicolor, col = "versicolor"))+
+  ggtitle("Probabilities for classifying species")
+
+```
+
+#Homework:
+
+1. Use the Breast Cancer dataset from the mlbench package, and predict whether the cancer is malignant or benign using one of the algorithms we learned about in class. Give some rationale as to why you chose this algorithm. Plot ROC curves, and confusion matrices. If you are choosing a hyperparameter like K or lambda, explain how and why you chose it. 
+
+Downloading data:
+
+```{r}
+#install.packages("mlbench")
+library(mlbench)
+data(BreastCancer)
+head(BreastCancer)
+str(BreastCancer)
+#is.na(BreastCancer) # couple of NA in $Bare.nuclei
+dim(BreastCancer)
+BreastCancer_clean<- na.omit(BreastCancer)
+is.na(BreastCancer_clean)
+dim(BreastCancer_clean) [683:11]
+summary(BreastCancer_clean$Class)
+```
+
+Data:
+
+n=699, after NA ommited, n=683
+9 variables - ordinary numbers with 10 or 9 levels each
+458-B and 241-M. After cleaning, predictor's 2 classes:444-B and 239-M
+
+The main goal of this task is to find a function to classify accurately predictor's 2 classes.
+
+Method chosen is Dimension Reduction with Multiple Correspondence Analysis and Logistic Regression build on selected dimension/features:
+
+1. Since the variables are all categorical, I will use MCA as a dimension reduction technique. 
+MCA enables the study of both the relationship between the observations and the associations between variable categories (biplot).  
+ {The other technique for me to try is 'latent class analysis in R' next time.}
+ 
+ {If I had more than two classes, I would have considered LDA as linear classification and DR method for categorical data.}
+ 
+2. MCA raw coordinates from selected dimension(s) will serve as a new predictor for Logistic Regression on train set to build the classification model. Afterwards, the model will be validated on test set. 
+
+3.Depending on the model performance (ROC and AUC), I might proceed for L1 and L2 regularizations.
+
+
+
+## 1. Multiple Correspondence Analysis (MCA) for categ.variables without predictor:
+(http://www.sthda.com/english/wiki/print.php?id=232#variable-categories)
+
+```{r}
+data(BreastCancer_clean)
+head( BreastCancer_MCA<- BreastCancer_clean[, 2:10])  #excl.Ind and Class
+```
+
+
+#### Data: Plotting the frequency of variable categories:
+
+```{r}
+for (i in 1:ncol(BreastCancer_MCA)) {
+  plot(BreastCancer_MCA[,i], main=colnames(BreastCancer_MCA)[i],
+       ylab = "Count", col="steelblue", las = 2)
+  }
+```
+
+
+*Optional: Histogram of variable counts (though I am not using LDA here)
+
+```{r}
+cellsize <- ggplot(data = BreastCancer_clean, aes(x = as.numeric(Cell.size), fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25) +
+  ggtitle("Cell size by Class (B/M)")+
+  theme_bw()
+cellsize
+
+
+cellshape <- ggplot(data = BreastCancer_clean, aes(x = as.numeric(Cell.shape), fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25) +
+  ggtitle("Cell shape by Class (B/M)")+
+  theme_bw()
+cellshape
+
+
+grid.arrange(cellsize, cellshape)
+```
+
+
+####MCA:
+FactoMineR::MCA()
+(by default: MCA(X, ncp = 5, graph = TRUE))
+X : a data frame with n rows (individuals) and p columns (categorical variables)
+ncp : number of dimensions kept in the final results.
+graph : a logical value. If TRUE a graph is displayed.
+
+(guidance from: https://r.789695.n4.nabble.com/How-to-use-PC1-of-PCA-and-dim1-of-MCA-as-a-predictor-in-logistic-regression-model-for-data-reduction-td3750251.html)
+
+```{r}
+#Then, I used mjca of ca pacakge for MCA. 
+#install.packages("ca")
+library(ca)
+mjca1 <-  mjca(BreastCancer_MCA) 
+
+summary(mjca1) 
+
+# Dim1 explains 65.8% of variance, of the highest dim score on scree plot. 33 dimensions explain ~88.6% of variance.
+
+
+# which values I could use like PC1 in PCA?
+#"rowcoord" in mjca1 will help:. 
+plot.mjca(mjca1)
+mjca1$rowpcoord 
+
+BreastCancer_clean$NewScore <- mjca1$rowcoord[, 1] #dim1 
+
+head(BreastCancer_clean)
+```
+
+#### Now, let's check whether the factors are independent
+(Chi-Sq scores for significance of correlation - smaller the stronger is the fit/relationship
+and Cramer's V for strength of it - the opposite. )
+
+```{r}
+
+features1 <- cbind( BreastCancer_clean$Cell.size, BreastCancer_clean$Cell.shape )
+chsq1<- chisq.test(features1)
+#X-squared = 131.71, df = 682, p-value = 1. There is no relation
+
+library(lsr)
+crv1<- cramersV(features1)
+#0.1740442 : There is weak relations between Cell size and Cell shape
+
+
+features2 <- cbind( BreastCancer_clean$Cell.size, BreastCancer_clean$Cl.thickness )
+chsq2<- chisq.test(features2)
+#X-squared = 538.53, df = 682, p-value = 1. There is no relation
+
+crv2<- cramersV(features2)
+#0.3222482 : There is not strong relations between Cell size and Cell thickness
+
+
+features3 <- cbind( BreastCancer_clean$Cell.size, BreastCancer_clean$Margin.adhesion )
+chsq3<- chisq.test(features3)
+#X-squared = 2033.6, df = 682, p-value < 2.2e-16. There might be some relation
+
+crv3<- cramersV(features3)
+#0.03722366 : However, Cramer's scores tell us that that the relationship is not strong
+
+
+features4 <- cbind( BreastCancer_clean$Cell.size, BreastCancer_clean$ Epith.c.size)
+chsq4<- chisq.test(features4)
+#X-squared = 329.42, df = 682, p-value = 1. No relation
+
+crv4<- cramersV(features4)
+#0.2748433 : The relationship is not strong
+
+# Creating table of statistical scores for features correaltion:
+library(broom)
+library(purrr)
+
+ChiSq_table <- map_df(list(chsq1, chsq2, chsq3, chsq4), tidy)
+#to get just the columns I need:
+ChiSq_table[c("statistic", "p.value", "method")] 
+# statistic is X-sq score. method is the df
+
+```
+
+With chi-sq and Cramer's V scores confirmed that the features we have on hands are not collinear. We can proceed for LR. 
+
+
+
+#### Saving MCA rowscore as a new feature in dataset. Splitting data. Building LR model on the train, testing it. Plotting ROC curve and interpreting AUC score.
+
+```{r}
+# I will then use "NewScore" as one of the predictors for the model instead of original 9 variables. 
+#data(BreastCancer_clean)
+
+#split into training and test set 
+train_size <- floor(0.75 * nrow(BreastCancer_clean))
+set.seed(324)
+train_Index <- sample(seq_len(nrow(BreastCancer_clean)), size = train_size)
+train_classifier <- BreastCancer_clean[train_Index,]
+test_classifier <- BreastCancer_clean[-train_Index,]
+
+
+dim(train_classifier) #[512:12]
+dim(test_classifier) #[171:12]
+
+#Model:
+MCA_glm <- glm(Class ~ NewScore, data = train_classifier, family = binomial)
+summary(MCA_glm)
+#Intercept: -1.7990  NewScore -4.0326
+
+```
+
+```{r}
+#Trying more elaborate LR with Control:
+
+ctl_BRCA <- trainControl(method = "repeatedcv", repeats = 10,classProbs = T,
+                     savePredictions = T)
+#summary(ctrl_BRCA)
+
+MCA_train <- train(Class ~ NewScore, data = train_classifier, method = "glm", family= "binomial", trControl = ctl_BRCA)
+
+summary(MCA_train)
+#Intercept: -1.7990  NewScore -4.0326
+# SAME RESULT!!!!
+```
+
+
+#### Testing the model and evaluating its accuracy (ROC and AUC):
+
+```{r}
+#Test set:
+library(pROC)
+
+MCA_glm_predicted <- predict(MCA_glm, newdata=test_classifier, type="response") 
+
+# Note: feed ROC not with vectors (predicted and actual) as here:
+# roccurve <- roc(data=test_classifier, MCA_glm$Class, predicted_classification) 
+
+# But with a single matrix instead:
+predicted_data <- data.frame(prob = MCA_glm_predicted,
+                             class = test_classifier$Class)
+
+roccurve <- roc(data = predicted_data, response = "class", "prob" ) 
+# roc() calculates confusion matrix for test set and outputs AUC score
+#another option is to use confusionMatrix()
+
+plot(roccurve)  # evaluation of a model performance on test to evaluate how well NewScore can predict malignancy state(=1) of breast cancer
+#auc(roccurve)
+```
+
+Both the ROC curve and the high AUC value (Area Under the Curve) indicate that the model is good in predicting no DM (i.e. true positives).
+
+#### Vizualizing the results:
+
+! Checking if log odds and independent variables are linearly correlated
+```{r}
+
+# To convert from a probability to odds, divide the probability by one minus that probability. So if the probability is 10% or 0.10 , then the odds are 0.1/0.9 or ‘10%/90%’ or 1 out of 9 
+prediction_odds <- MCA_glm_predicted / (1 - MCA_glm_predicted)
+log_prediction_odds <- log(prediction_odds)
+
+#log_odds and indep.variable X must be linearly correlated:
+cor.test(log_prediction_odds, test_classifier$NewScore)
+plot(log_prediction_odds, test_classifier$NewScore)
+
+# Yes, they are correlated!
+
+```
+
+
+plotting predicted vs actual obs.
+```{r}
+#prepare df to plot = predicted + actual labels:
+df_to_plot_results <- data.frame(Class_pred = MCA_glm_predicted, MCA_selected_features  = test_classifier$NewScore,
+                                 classes = test_classifier$Class) 
+
+#Stash away actual labels as logical vector:
+df_to_plot_results$Class <- as.numeric(test_classifier$Class) -1
+
+# Plotting predictions and actual observations: 
+ggplot(data = df_to_plot_results) +
+  geom_point(aes(x=MCA_selected_features, y = Class)) + 
+  geom_line(aes(x = MCA_selected_features, y = Class_pred, col = "Blue")) +
+  geom_line(aes(x = MCA_selected_features, y = 1-Class_pred,  col = "Red"))+ 
+#(x and y whatever you name it, input data is the only thing to worry here.)
+  ggtitle("Probabilities for classifying whether benign or malignant")
+
+```
+
+*CONCLUSION on MCA and Logistic Regression:*
+
+"
+> roccurve
+
+Call:
+roc.data.frame(data = predicted_data, response = "class", predictor = "prob")
+
+Data: prob in 116 controls (class benign) < 55 cases (class malignant).
+Area under the curve: 0.9892
+"
+
+Conclusion 1:
+Selected single Dim1 was a successful choice to select features for Logistic Regression. The model performed with TP of 98% on validation set, which is pretty high.
+
+Conclusion 2. What could be done more:
+1. Evaluation of the model right after building it.
+
+The other ways to go about the task:
+1. as.numeric(data) -> PCA -> Logistic Regression
+2. kNN
+3. data[-Class] -> k-Means with k=2 and also choosing k through silhouette analysis.
+It will be interesting to compare these results. Will do it when bit later.
+
+The end. Thank you!
+
+===================
+===================
+## Optional- exploring other packages to perform exactly same steps as before:
+
+MCA performed with FactoMineR::MCA
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+
+res.mca <- MCA(BreastCancer_MCA, graph = T)
+print(res.mca)
+
+#Other way:
+#mca_output <- MCA(BreastCancer_MCA, ncp=2, ind.sup = NULL, quanti.sup = NULL, quali.sup = NULL, excl=NULL, graph = TRUE, level.ventil = 0, axes = c(1,2), row.w = NULL, method="Indicator", na.method="NA", tab.disj=NULL)
+ 
+#summary(mca_output)
+```
+
+Summary of MCA outputs with FactoMineR::summary.MCA(). 
+
+Arguments:
+object: an object of class MCA
+nb.dec: number of decimal printed
+nbelements: number of row/column variables to be written. To have all the elements, use nbelements = Inf.
+ncp: Number of dimensions to be printed
+
+Print the summary of the MCA for the dimensions 1 and 2:
+```{r}
+MCA_summary<- summary(res.mca, nb.dec = 2, ncp = 2)
+
+#loading_score<- MCA_summary$CategoricalVariables_(eta2)[, 1]
+```
+
+Note:
+For exporting the summary to a file, use the code: summary(res.mca, file =“myfile.txt”)
+For displaying the summary of more than 10 elements, use the argument nbelements in the function summary()
+
+
+####Interpretation of MCA outputs 
+(http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/113-ca-correspondence-analysis-in-r-essentials/)
+
+*Eigenvalues/variances and screeplot*
+The proportion of variances retained by the different dimensions (axes) can be extracted using the function get_eigenvalue() [in factoextra] as follow :
+```{r}
+eigenvalues <- get_eigenvalue(res.mca)
+head(round(eigenvalues, 2))
+```
+
+*SCREEPLOT*
+factoextra::fviz_screeplot() 
+(the percentages of inertia explained by the MCA dimensions):
+
+```{r}
+fviz_screeplot(res.mca)
+
+# It is possible that the two dimensions we chose are sufficient to explain data variance
+```
+(more: http://www.sthda.com/english/wiki/eigenvalues-quick-data-visualization-with-factoextra-r-software-and-data-mining)
+
+
+*MCA SCATTER plot*: 
+(Biplot of observ. and variable factors linked together)
+FactoMineR::plot.MCA() 
+```{r}
+# a simple format:
+plot.MCA(res.mca)#, axes = c(1,2), choix=c("ind", "var"))
+#plot(res.mca)
+```
+Note:
+x : An object of class MCA
+axes : A numeric vector of length 2 specifying the component to plot
+choix : The graph to be plotted. Possible values are “ind” for the individuals and “var” for the variables
+
+
+same MCA BIPLOT with different package: 
+factoextra::fviz_mca_biplot():
+```{r}
+
+fviz_mca_biplot(res.mca)
+
+```
+
+```{r ECHO=F}
+# Change the theme
+#fviz_mca_biplot(res.mca) +
+#  theme_minimal()
+```
+
+CONCLUSION ON BIPLOT:
+a global pattern within the data: rows (individuals) are represented by blue points and columns (variable categories) by red triangles.
+The distance between any row points or column points gives a measure of their similarity (or dissimilarity).
+Row points with similar profile are closed on the factor map. The same holds true for column points.
+
+
+VARIABLE CATEGORIES
+
+factoextra::get_mca_var() used to extract the results for variable categories.  vs ca::mjca$rowcoord or $rowpcoord
+Output is a list containing the coordinates, the cos2 and the contribution of variable categories.
+```{r}
+var <- get_mca_var(res.mca)
+var
+
+```
+
+Variables can be visualized:
+```{r}
+plot(res.mca, choix = "var")
+
+```
+
+Cell.size and Cell.shape are correlated to both dimensions.
+
+There is no given variable strongly correlated only to dim.2 alone...
+
+The coordinates are the squared correlations between variables and the dimensions.
+
+However, we need to investigate more.
+
+
+*Extracting Coordinates of variable categories* to be used a s new predictors in model: 
+```{r}
+head(round(var$coord, 2))
+
+```
+
+
+visualize only variable categories:
+(factoextra::fviz_mca_var())
+```{r}
+# Default plot
+#fviz_mca_var(res.mca)
+fviz_mca_var(res.mca, col.var="black", shape.var = 70)
+
+```
+
+MEASURING CONTRIBUTION of variable categories (%) to the dimensions
+```{r}
+head(round(var$contrib,2))
+```
+The variable categories with the larger value, contribute the most to the definition of the dimensions.
+
+
+The different categories in the table are:
+```{r}
+categories <- rownames(var$coord)
+length(categories)
+```
+there are initial 89 categories in our data.
+
+
+HIGHLIGHTs on MOST CONTR-G VAR-S for each dimension:
+
+```{r ECHO=F}
+
+#install.packages("corrplot")
+library("corrplot")
+head(corrplot(var$contrib, is.corr = FALSE))
+```
+
+*Bar plot* of variable contributions:
+(factoextra::fviz_contrib())
+
+```{r}
+# Contributions of variables on Dim.1
+fviz_contrib(res.mca, choice = "var", axes = 1)
+
+```
+If the contribution of variable categories were uniform, the expected value would be 1/number_of_categories = 1/22 = 4.5%.
+
+The red dashed line on the graph above indicates the expected average contribution. For a given dimension, any category with a contribution larger than this threshold could be considered as important in contributing to that dimension.
+
+It can be seen that the categories ...  are the most important in the definition of the first dimension.
+
+```{r}
+
+# Contributions of rows on Dim.2
+fviz_contrib(res.mca, choice = "var", axes = 2)
+```
+
+Correlation between variables and principal dimensions
+
+```{r}
+# Total contribution on Dim.1 and Dim.2
+fviz_contrib(res.mca, choice = "var", axes = 1:2)
+```
+
+The total contribution of a category, on explaining the variations retained by Dim.1 and Dim.2, is calculated as follow : (C1 * Eig1) + (C2 * Eig2).
+
+C1 and C2 are the contributions of the category to dimensions 1 and 2, respectively. Eig1 and Eig2 are the eigenvalues of dimensions 1 and 2, respectively.
+
+The expected average contribution of a category for Dim.1 and Dim.2 is : (4.5 * Eig1) + (4.5 * Eig2) = (4.50.34) + (4.50.13) = 2.12%
+
+
+*If data contains many categories, the TOP CONTR-ING categories*
+
+```{r}
+
+fviz_contrib(res.mca, choice = "var", axes = 1, top = 10)
+
+```
+
+```{r}
+fviz_contrib(res.mca, choice = "var", axes = 1:2, top = 10)
+```
+#####*CONCLUSION:* 
+
+According to the categories contribution barplot, Cell.size, Cell.shape, Normal.nucleoli, Bare.nuclei, Marg.adhesion and Epith.c.size_2 will be included in Logistic Regression with their factors.
+ 
+```{r ECHO=F}
+#Optional:
+
+#A second option is to draw a SCATTERPLOT of categories and to highlight categories according to the amount of their contributions.
+
+# Control category point colors using their contribution
+# Possible values for the argument col.row are :
+  # "cos2", "contrib", "coord", "x", "y"
+fviz_mca_var(res.mca, col.var = "contrib")+
+scale_color_gradient2(low="white", mid="blue", 
+                      high="red", midpoint=2)+theme_minimal()
+```
+
+
+
+```{r ECHO=F}
+# Optional:
+
+#TRANSPARENCY BY CONTRIB.
+#fviz_mca_var(res.mca, alpha.var="contrib")+
+  #theme_minimal()
+```
+
+
+```{r}
+#Optional:
+
+# TOP 10 contributing categories
+fviz_mca_var(res.mca, select.var=list(contrib=10))
+
+```
+
+
+
+
+```{r ECHO=F}
+#Optional:
+  
+#Change individual colors by groups using the levels of the variable sick. The argument with factors and subfactors desired ='habillage':
+#fviz_mca_ind(res.mca, label = "none", Cell.size=10)
+
+#Add ellipses of point concentrations : the argument habillage is used to specify the factor variable for coloring the observations by groups.
+
+#fviz_mca_ind(res.mca, label="none", Cell.shape=10,
+ #            addEllipses = TRUE, ellipse.level = 0.95)
+```
+
+```{r ECHO=F}
+#Optional:
+
+#top 5 contributing individuals and variable categories
+fviz_mca_biplot(res.mca, select.ind = list(contrib = 5), 
+               select.var = list(contrib = 5)) +
+  theme_minimal()
+
+#Supplementary individuals/variable categories are not shown because they don’t contribute to the construction of the axes.
+
+```
+
+```{r}
+# Extracting coordinates for MCA individuals/observations:
+coord = fviz_mca_ind(res.mca, select.ind = list(contrib = 10))+ 
+  theme_minimal()
+coord
+```
+
+
+-----------
+References: 
+https://sebastianraschka.com/Articles/2014_python_lda.html
+
+https://towardsdatascience.com/building-a-multiple-linear-regression-model-and-assumptions-of-linear-regression-a-z-9769a6a0de42
+
+http://www.statisticssolutions.com/wp-content/uploads/wp-post-to-pdf-enhanced-cache/1/assumptions-of-logistic-regression.pdf
+
+https://machinelearningmastery.com/linear-discriminant-analysis-for-machine-learning/  , https://sebastianraschka.com/Articles/2014_python_lda.html
+
+
+Other cool sites: 
+https://www.countbayesie.com/blog/2019/6/12/logistic-regression-from-bayes-theorem
+https://colah.github.io/posts/2014-03-NN-Manifolds-Topology/
